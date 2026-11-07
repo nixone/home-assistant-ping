@@ -1,6 +1,7 @@
 {
   "domain": "ping_monitor",
   "name": "Ping Monitor",
+  "categories": ["computers_network.monitoring"],
   "codeowners": ["@nixone"],
   "config_flow": true,
   "documentation": "https://github.com/nixone/home-assistant-ping",
