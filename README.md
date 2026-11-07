@@ -113,3 +113,7 @@ pytest
 
 `icmp.py`, `prober.py` and `stats.py` don't import Home Assistant and can be tested on
 their own.
+
+## License
+
+[MIT](LICENSE)
