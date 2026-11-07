@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Ping Monitor: a source sends echo waves, fading with distance (packet loss), to a replying host. -->
+  <g fill="none" stroke="#03A9F4" stroke-width="20" stroke-linecap="round">
+    <path d="M76.3 94.3 A44 44 0 0 1 76.3 161.7"/>
+    <path d="M100.7 65.2 A82 82 0 0 1 100.7 190.8" stroke-opacity="0.75"/>
+    <path d="M125.1 36.1 A120 120 0 0 1 125.1 219.9" stroke-opacity="0.5"/>
+  </g>
+  <circle cx="48" cy="128" r="24" fill="#03A9F4"/>
+  <circle cx="220" cy="128" r="20" fill="#4CAF50"/>
+</svg>

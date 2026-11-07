@@ -114,6 +114,13 @@ pytest
 `icmp.py`, `prober.py` and `stats.py` don't import Home Assistant and can be tested on
 their own.
 
+## Icon
+
+`custom_components/ping_monitor/brand/` holds the icon. Home Assistant 2026.3+ shows it
+without any submission to the brands repository. The source is `icon.svg`. Regenerate
+the PNGs with `node scripts/render_icons.js custom_components/ping_monitor/brand/icon.svg
+custom_components/ping_monitor/brand`.
+
 ## License
 
 [MIT](LICENSE)
