@@ -1,0 +1,190 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a ping target",
+        "description": "Continuously pings an IPv4 host and reports packet loss and round-trip time statistics.",
+        "data": {
+          "host": "Host",
+          "name": "Name",
+          "payload_size": "ICMP payload size",
+          "interval": "Ping interval",
+          "timeout": "Timeout",
+          "window": "Statistics window",
+          "publish_interval": "Update interval",
+          "ttl": "TTL",
+          "down_after": "Down after",
+          "up_after": "Up after"
+        },
+        "data_description": {
+          "host": "Host name or IPv4 address to ping.",
+          "name": "Optional; defaults to the host.",
+          "payload_size": "Bytes of payload per echo request (56 = default `ping`). Above ~1472 B packets get fragmented on a 1500 B MTU path.",
+          "interval": "Seconds between echo requests.",
+          "timeout": "A reply arriving later than this counts as lost.",
+          "window": "Seconds of history the loss and RTT statistics are computed over.",
+          "publish_interval": "How often the sensors are updated, in seconds.",
+          "ttl": "IP time-to-live of the echo requests.",
+          "down_after": "Consecutive lost packets before connectivity turns off.",
+          "up_after": "Consecutive replies before connectivity turns back on."
+        }
+      }
+    },
+    "error": {
+      "cannot_resolve": "The host name cannot be resolved to an IPv4 address.",
+      "socket_not_permitted": "Home Assistant is not allowed to open an ICMP socket. Allow unprivileged ping (sysctl net.ipv4.ping_group_range) or grant CAP_NET_RAW.",
+      "window_too_short": "The window must be at least two ping intervals long.",
+      "window_shorter_than_timeout": "The window must be longer than the timeout.",
+      "publish_longer_than_window": "The update interval must not be longer than the window."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ping target options",
+        "data": {
+          "payload_size": "ICMP payload size",
+          "interval": "Ping interval",
+          "timeout": "Timeout",
+          "window": "Statistics window",
+          "publish_interval": "Update interval",
+          "ttl": "TTL",
+          "down_after": "Down after",
+          "up_after": "Up after"
+        },
+        "data_description": {
+          "payload_size": "Bytes of payload per echo request (56 = default `ping`). Above ~1472 B packets get fragmented on a 1500 B MTU path.",
+          "interval": "Seconds between echo requests.",
+          "timeout": "A reply arriving later than this counts as lost.",
+          "window": "Seconds of history the loss and RTT statistics are computed over.",
+          "publish_interval": "How often the sensors are updated, in seconds.",
+          "ttl": "IP time-to-live of the echo requests.",
+          "down_after": "Consecutive lost packets before connectivity turns off.",
+          "up_after": "Consecutive replies before connectivity turns back on."
+        }
+      }
+    },
+    "error": {
+      "cannot_resolve": "The host name cannot be resolved to an IPv4 address.",
+      "socket_not_permitted": "Home Assistant is not allowed to open an ICMP socket. Allow unprivileged ping (sysctl net.ipv4.ping_group_range) or grant CAP_NET_RAW.",
+      "window_too_short": "The window must be at least two ping intervals long.",
+      "window_shorter_than_timeout": "The window must be longer than the timeout.",
+      "publish_longer_than_window": "The update interval must not be longer than the window."
+    }
+  },
+  "entity": {
+    "binary_sensor": {
+      "connectivity": {
+        "name": "Connectivity",
+        "state_attributes": {
+          "outage_started": {
+            "name": "Outage started"
+          }
+        }
+      }
+    },
+    "sensor": {
+      "packet_loss": {
+        "name": "Packet loss",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_avg": {
+        "name": "RTT average",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_median": {
+        "name": "RTT median",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_min": {
+        "name": "RTT min",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_max": {
+        "name": "RTT max",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_p95": {
+        "name": "RTT 95th percentile",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_p99": {
+        "name": "RTT 99th percentile",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "rtt_stddev": {
+        "name": "RTT standard deviation",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "jitter": {
+        "name": "Jitter",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "longest_loss_burst": {
+        "name": "Longest loss burst",
+        "state_attributes": {
+          "window": {
+            "name": "Window"
+          }
+        }
+      },
+      "last_rtt": {
+        "name": "Last RTT"
+      },
+      "packets_sent": {
+        "name": "Packets sent"
+      },
+      "packets_received": {
+        "name": "Packets received"
+      },
+      "packets_lost": {
+        "name": "Packets lost"
+      },
+      "outages": {
+        "name": "Outages"
+      },
+      "last_outage_duration": {
+        "name": "Last outage duration"
+      },
+      "address": {
+        "name": "Resolved address"
+      }
+    }
+  }
+}

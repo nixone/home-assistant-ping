@@ -1,0 +1,12 @@
+{
+  "domain": "ping_monitor",
+  "name": "Ping Monitor",
+  "codeowners": ["@nixone"],
+  "config_flow": true,
+  "documentation": "https://github.com/nixone/home-assistant-ping",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/nixone/home-assistant-ping/issues",
+  "requirements": [],
+  "version": "0.1.0"
+}

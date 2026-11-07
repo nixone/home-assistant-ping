@@ -53,12 +53,16 @@ Key decisions:
    (`async_set_updated_data`). Each probe is sent on its own schedule and not awaited
    serially, so a 2 s timeout never delays the next 1 s probe. Replies are matched by ICMP
    id and sequence number.
-3. **Library: [`icmplib`](https://github.com/ValentinBELYN/icmplib)**, which core `ping`
-   already uses, so there is no new dependency footprint. `ICMPv4Request`/`ICMPv6Request`
-   support `payload_size` and `ttl`, and `AsyncSocket` gives per-packet control.
+3. **ICMP socket: a small built-in implementation (`icmp.py`), no dependencies.**
+   *Changed during implementation.* The original plan used `icmplib`, but its async
+   `receive()` waits for one specific request at a time. With overlapping probes
+   (timeout > interval) on one socket, concurrent receives would steal each other's
+   replies. The built-in socket uses one `add_reader` callback that dispatches every reply
+   by sequence number, and takes RTTs from **kernel receive timestamps**
+   (`SO_TIMESTAMPNS`), so event-loop latency in HA doesn't inflate them.
    - Runs **unprivileged** (`SOCK_DGRAM` ICMP) when `net.ipv4.ping_group_range` allows it,
-     as on HA OS and most containers. It falls back to privileged raw sockets and reports a
-     repair issue if neither works.
+     as on HA OS and most containers. Falls back to a raw socket, and setup fails with a
+     clear error if neither is permitted.
 4. **One config entry per target** (see §4.1 for the trade-off). This gives "multiple
    targets" for free: add the integration again for each host. Each target gets its own
    device, can be disabled/reloaded on its own, and gets its own diagnostics.
@@ -194,6 +198,8 @@ could later be extracted into a small PyPI library, which is a prerequisite if t
 proposed for core.
 
 ## 9. Milestones
+
+Milestones 1–3 are implemented (v0.1.0).
 
 1. **MVP:** IPv4 only. Config flow (host, payload size, interval, timeout, window), prober,
    sensors for loss, RTT avg/min/max/p95 and jitter, a connectivity binary sensor, and tests
