@@ -116,7 +116,7 @@ attribute. The less important entities are disabled by default:
 | RTT min / max | ms | measurement | ✅ |
 | RTT p95 / p99 | ms | measurement | p95 ✅, p99 ⬜ |
 | RTT std deviation | ms | measurement | ⬜ |
-| Jitter (W) – mean of \|RTTₙ − RTTₙ₋₁\| (RFC 3550-style) | ms | measurement | ✅ |
+| Jitter – mean of \|RTTₙ − RTTₙ₋₁\| (RFC 3550-style) | ms | measurement | ✅ |
 | Longest loss burst | packets | measurement | ⬜ |
 
 Global (not per window):
