@@ -87,7 +87,12 @@ automation:
 - Packets still in flight are excluded from the statistics until they're answered or
   time out.
 - If the host can't be resolved, every probe counts as lost (100 % loss) instead of the
-  sensors going `unavailable`. Host names are re-resolved every 5 minutes.
+  sensors going `unavailable`. Host names are re-resolved every 5 minutes, or every
+  10 seconds while no replies arrive. Resolution runs in the background with a timeout,
+  so a slow or hung DNS server never pauses probing.
+- Recovery after network changes needs no reload. While nothing gets through, the ICMP
+  socket is recreated every 30 seconds, and an unexpected error is logged and probing
+  continues.
 
 ### ICMP permissions
 

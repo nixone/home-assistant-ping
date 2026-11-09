@@ -11,12 +11,15 @@ import logging
 import os
 import socket
 
-from .icmp import IcmpSocket
+from .icmp import IcmpSocket, IcmpSocketError
 from .stats import WindowStats, compute
 
 _LOGGER = logging.getLogger(__name__)
 
-RESOLVE_INTERVAL = 300.0  # seconds between DNS re-resolutions
+RESOLVE_INTERVAL = 300.0  # seconds between DNS re-resolutions while healthy
+FAILING_RESOLVE_INTERVAL = 10.0  # ... while no replies arrive (or no address yet)
+RESOLVE_TIMEOUT = 10.0  # a hung resolver must not stall probing
+REOPEN_AFTER = 30.0  # recreate the socket after this long without a reply
 
 
 @dataclass(slots=True)
@@ -125,27 +128,44 @@ class Prober:
         self._probes: deque[Probe] = deque()
         self._pending: dict[int, Probe] = {}
         self._seq = int.from_bytes(os.urandom(2), "big")
-        self._next_resolve = 0.0
+        self._literal = _ipv4_literal(host)
+        self._last_resolve: float | None = None
+        self._resolve_task: asyncio.Task[None] | None = None
+        # Loop time of the first lost probe in the current failure streak.
+        self._failing_since: float | None = None
+        self._last_reopen = 0.0
+        self.socket_reopens = 0
         self._send_error_logged = False
+        self._resolve_error_logged = False
 
     # -- lifecycle ---------------------------------------------------------
 
     def open(self, loop: asyncio.AbstractEventLoop) -> None:
         """Open the socket. Raises IcmpSocketError if not permitted."""
         self._loop = loop
-        self._sock = (self._socket_factory or IcmpSocket.open)()
-        self._sock.set_ttl(self.ttl)
-        self._sock.start(loop, self._on_reply)
+        self._sock = self._new_socket()
         self.socket_mode = self._sock.mode
+        if self._literal is not None:
+            self.address = self._literal
 
     async def run(self) -> None:
-        """Probe until cancelled or closed."""
+        """Probe until cancelled or closed.
+
+        Nothing here may end the loop except close() or cancellation: a dead
+        loop would silently freeze every sensor until the entry is reloaded.
+        """
         assert self._loop is not None, "call open() first"
         loop = self._loop
+        if self._literal is None:
+            await self._resolve()  # so the first probes don't count as lost
         next_at = loop.time()
         while self._sock is not None:  # close() ends the loop
-            await self._maybe_resolve()
-            self._send_one()
+            try:
+                self._maybe_resolve()
+                self._maybe_reopen()
+                self._send_one()
+            except Exception:  # noqa: BLE001 - keep probing whatever happens
+                _LOGGER.exception("Unexpected error while probing %s", self.host)
             next_at += self.interval
             delay = next_at - loop.time()
             if delay < 0:  # event loop stalled; don't burst to catch up
@@ -155,6 +175,9 @@ class Prober:
 
     def close(self) -> None:
         """Cancel pending timers and close the socket."""
+        if self._resolve_task is not None:
+            self._resolve_task.cancel()
+            self._resolve_task = None
         for probe in self._pending.values():
             if probe.timer:
                 probe.timer.cancel()
@@ -175,32 +198,75 @@ class Prober:
 
     # -- internals ---------------------------------------------------------
 
-    async def _maybe_resolve(self) -> None:
+    def _maybe_resolve(self) -> None:
+        """Re-resolve in the background; probes keep using the last address."""
         loop = self._loop
         assert loop is not None
-        if loop.time() < self._next_resolve:
+        if self._literal is not None or self._resolve_task is not None:
             return
-        self._next_resolve = loop.time() + RESOLVE_INTERVAL
+        failing = self.address is None or self._failing_since is not None
+        interval = FAILING_RESOLVE_INTERVAL if failing else RESOLVE_INTERVAL
+        if self._last_resolve is not None and loop.time() - self._last_resolve < interval:
+            return
+        self._resolve_task = loop.create_task(self._resolve())
+
+    async def _resolve(self) -> None:
+        loop = self._loop
+        assert loop is not None
+        self._last_resolve = loop.time()
         try:
-            self.address = str(ipaddress.IPv4Address(self.host))
-            self._next_resolve = float("inf")
+            async with asyncio.timeout(RESOLVE_TIMEOUT):
+                infos = await loop.getaddrinfo(
+                    self.host, None, family=socket.AF_INET, type=socket.SOCK_DGRAM
+                )
+            new = infos[0][4][0]
+        except (OSError, TimeoutError, IndexError) as err:
+            log = _LOGGER.debug if self._resolve_error_logged else _LOGGER.warning
+            log("Cannot resolve %s: %s", self.host, str(err) or "timed out")
+            self._resolve_error_logged = True
             return
-        except ValueError:
-            pass
-        try:
-            infos = await loop.getaddrinfo(
-                self.host, None, family=socket.AF_INET, type=socket.SOCK_DGRAM
-            )
-        except OSError as err:
-            _LOGGER.warning("Cannot resolve %s: %s", self.host, err)
-            # Retry sooner while we have no address at all.
-            if self.address is None:
-                self._next_resolve = loop.time() + 10
-            return
-        new = infos[0][4][0]
+        finally:
+            self._resolve_task = None
+        self._resolve_error_logged = False
         if new != self.address:
-            _LOGGER.debug("%s resolved to %s", self.host, new)
+            _LOGGER.info("%s resolved to %s (was %s)", self.host, new, self.address)
         self.address = new
+
+    def _maybe_reopen(self) -> None:
+        """Recreate the socket while nothing gets through.
+
+        The kernel normally recovers on its own after a network change, but a
+        fresh socket is cheap and guarantees we never keep using a broken one.
+        """
+        loop = self._loop
+        assert loop is not None
+        if self._failing_since is None or self.address is None:
+            return
+        now = loop.time()
+        if now - max(self._failing_since, self._last_reopen) < REOPEN_AFTER:
+            return
+        self._last_reopen = now
+        try:
+            new = self._new_socket()
+        except (IcmpSocketError, OSError) as err:
+            _LOGGER.debug("Cannot reopen ICMP socket for %s: %s", self.host, err)
+            return
+        _LOGGER.debug("No replies from %s, reopened ICMP socket", self.host)
+        old, self._sock = self._sock, new
+        self.socket_reopens += 1
+        if old is not None:
+            old.close()  # its pending probes simply time out as lost
+
+    def _new_socket(self) -> IcmpSocket:
+        assert self._loop is not None
+        sock = (self._socket_factory or IcmpSocket.open)()
+        try:
+            sock.set_ttl(self.ttl)
+            sock.start(self._loop, self._on_reply)
+        except BaseException:
+            sock.close()
+            raise
+        return sock
 
     def _send_one(self) -> None:
         loop = self._loop
@@ -250,8 +316,18 @@ class Prober:
         probe.timer = None
         if rtt is None:
             self.lost += 1
+            if self._failing_since is None:
+                self._failing_since = probe.sent_at
         else:
             self.received += 1
             self.last_rtt = rtt
+            self._failing_since = None
         if self._on_result is not None:
             self._on_result(probe)
+
+
+def _ipv4_literal(host: str) -> str | None:
+    try:
+        return str(ipaddress.IPv4Address(host))
+    except ValueError:
+        return None

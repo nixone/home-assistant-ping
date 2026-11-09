@@ -20,6 +20,7 @@ async def async_get_config_entry_diagnostics(
         "data": dict(entry.data),
         "options": dict(entry.options),
         "socket_mode": prober.socket_mode,
+        "socket_reopens": prober.socket_reopens,
         "address": prober.address,
         "counters": {"sent": prober.sent, "received": prober.received, "lost": prober.lost},
         "window_stats": asdict(prober.window_stats()),

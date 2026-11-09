@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from custom_components.ping_monitor import prober as prober_mod
 from custom_components.ping_monitor.prober import ConnectivityTracker, Prober
 
 from .fakes import FakeIcmpSocket
@@ -143,3 +144,92 @@ async def test_close_stops_run_loop():
     prober.close()
     await asyncio.wait_for(task, 1)  # returns on its own, no exception
     assert sock.closed
+
+
+def _prober(host: str, sock_factory, **kw) -> Prober:
+    args = dict(interval=0.02, timeout=0.05, window=60, payload_size=0, ttl=64)
+    return Prober(host, **{**args, **kw}, socket_factory=sock_factory)
+
+
+async def test_stale_dns_address_is_replaced_quickly_while_failing(monkeypatch):
+    """After a network change the host may resolve elsewhere; don't wait 5 minutes."""
+    monkeypatch.setattr(prober_mod, "FAILING_RESOLVE_INTERVAL", 0.1)
+    answers = {"addr": "192.0.2.1"}
+
+    async def getaddrinfo(host, *args, **kwargs):
+        return [(None, None, None, "", (answers["addr"], 0))]
+
+    sock = FakeIcmpSocket(lambda seq: None)  # nothing answers at the old address
+    prober = _prober("router.lan", lambda: sock)
+    prober.open(asyncio.get_running_loop())
+    monkeypatch.setattr(prober._loop, "getaddrinfo", getaddrinfo)
+    task = asyncio.create_task(prober.run())
+    await asyncio.sleep(0.2)
+    assert prober.address == "192.0.2.1"
+    answers["addr"] = "192.0.2.99"
+    sock.responder = lambda seq: 0.001
+    await asyncio.sleep(0.4)
+    assert prober.address == "192.0.2.99"
+    received = prober.received
+    await asyncio.sleep(0.2)
+    task.cancel()
+    prober.close()
+    assert prober.received > received
+
+
+async def test_hung_resolver_does_not_stall_probing(monkeypatch):
+    monkeypatch.setattr(prober_mod, "RESOLVE_INTERVAL", 0.05)
+    calls = 0
+
+    async def getaddrinfo(host, *args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls > 1:
+            await asyncio.sleep(3600)  # resolver hangs after the first lookup
+        return [(None, None, None, "", ("192.0.2.1", 0))]
+
+    sock = FakeIcmpSocket()
+    prober = _prober("router.lan", lambda: sock)
+    prober.open(asyncio.get_running_loop())
+    monkeypatch.setattr(prober._loop, "getaddrinfo", getaddrinfo)
+    task = asyncio.create_task(prober.run())
+    await asyncio.sleep(0.5)
+    task.cancel()
+    prober.close()
+    assert calls == 2
+    assert prober.sent >= 15 and prober.received >= 10
+
+
+async def test_callback_error_does_not_kill_probing(monkeypatch):
+    """Before, one exception here ended the task and froze all sensors until a reload."""
+
+    async def getaddrinfo(*args, **kwargs):
+        raise OSError("no network")  # no address: probes complete inside the send loop
+
+    def boom(probe):
+        raise RuntimeError("listener bug")
+
+    prober = _prober("router.lan", FakeIcmpSocket)
+    prober._on_result = boom
+    prober.open(asyncio.get_running_loop())
+    monkeypatch.setattr(prober._loop, "getaddrinfo", getaddrinfo)
+    task = asyncio.create_task(prober.run())
+    await asyncio.sleep(0.2)
+    assert not task.done()
+    task.cancel()
+    prober.close()
+    assert prober.sent >= 5
+
+
+async def test_socket_is_reopened_while_nothing_gets_through(monkeypatch):
+    monkeypatch.setattr(prober_mod, "REOPEN_AFTER", 0.1)
+    broken = FakeIcmpSocket(lambda seq: None)
+    healthy = FakeIcmpSocket()
+    sockets = iter([broken, healthy])
+    prober = _prober("127.0.0.1", lambda: next(sockets))
+    await _run(prober, 0.5)
+    prober.close()
+    assert broken.closed and healthy.closed
+    assert prober.socket_reopens == 1
+    assert healthy.ttl == 64 and healthy.sent
+    assert prober.received > 0
