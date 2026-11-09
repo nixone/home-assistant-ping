@@ -164,7 +164,7 @@ class Prober:
                 self._maybe_resolve()
                 self._maybe_reopen()
                 self._send_one()
-            except Exception:  # noqa: BLE001 - keep probing whatever happens
+            except Exception:  # keep probing whatever happens
                 _LOGGER.exception("Unexpected error while probing %s", self.host)
             next_at += self.interval
             delay = next_at - loop.time()
